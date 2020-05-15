@@ -21,11 +21,11 @@ This code is a work in progress.  It does produce a .mrc file that successfully 
 There are two versions in this repo:
 
 ### Java
-Works on windows and debian
-In my testing on Windows and Debian, encoding issues occur with about 2% of records.  If the ecoding issues cannot be resolved, one possible work-around is constructing the MARC using the JSON in the source record storage.
+* Works on windows and debian
+* In my testing on Windows and Debian, encoding issues occur with about 2% of records.  If the ecoding issues cannot be resolved, one possible work-around is constructing the MARC using the JSON in the source record storage.
 
 ### Python
-Works well on windows, however when tested on debian drops about 30% of records due to encoding issues. 
-Written W/Python 3.7.3
+* Works well on windows, however when tested on debian drops about 30% of records due to encoding issues. 
+* Written W/Python 3.7.3
 
 
