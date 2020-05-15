@@ -6,6 +6,7 @@ Feedback/modifications are welcome!
 
 ### What it does (using database queries)
 * Gets a list of all instance IDs that are not blocked from discovery
+* The initial query that gets the instance IDs has a limit=100 parameter - for testing
 * Using the intance ID it looks up the ID for the raw MARC record 
 * Reads in the raw MARC record from the database
 * Attempts to lookup holdings and items for the instance and adds 998 and 097 fields to the record
