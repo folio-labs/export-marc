@@ -13,7 +13,7 @@ This code is a work in progress.  It does produce a .mrc file that successfully 
 * It is not configurable
 * DB Info is hard-coded
 * Tenant ID is hard-coded 
-* Drop records due to encoding ?
+* Drops records due to encoding ?
 * Doesn't perform paging or divide the records into multiple files
 * ....things I haven't thought of yet
 
