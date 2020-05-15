@@ -2,9 +2,9 @@
 
 This code is a work in progress.  It does produce a .mrc file that successfully imports into VuFind.
 
-### What it does
+### What it does (using database queries)
 * Gets a list of all instance IDs that are not blocked from discovery.
-* Using the intance ID it looks up the ID for the raw MARC IN the source record storage module
+* Using the intance ID it looks up the ID for the raw MARC record 
 * Reads in the MARC record from the database
 * Attempts to lookup holdings and items for the instance and adds 998 and 097 fields
 
