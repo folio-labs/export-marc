@@ -18,6 +18,7 @@ Feedback/modifications are welcome!
 * Tenant ID is hard-coded 
 * Drops records due to encoding ?
 * Doesn't perform paging or divide the records into multiple files
+* 998, 097 hard-coded
 * ....things I haven't thought of yet
 
 
