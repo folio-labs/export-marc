@@ -2,6 +2,8 @@
 
 This code is a work in progress.  It does produce a .mrc file that successfully imports into VuFind.
 
+Feedback/modifications are welcome!
+
 ### What it does (using database queries)
 * Gets a list of all instance IDs that are not blocked from discovery
 * Using the intance ID it looks up the ID for the raw MARC record 
