@@ -19,6 +19,7 @@ Feedback/modifications are welcome!
 * Drops records due to encoding ?
 * Doesn't perform paging or divide the records into multiple files
 * 998, 097 hard-coded
+* No incremental yet
 * ....things I haven't thought of yet
 
 
