@@ -1,6 +1,6 @@
 ## MARC Export Scripts for FOLIO - WORK IN PROGRESS
 
-This code is a work in progress.  It does produce a .mrc file that successfully imports into VuFind.
+This code is a work in progress.  It does produce a .mrc (Python produces .json) file that successfully imports into VuFind.  The Python version produces a file of MARC-JSON which VuFind can index.
 
 Feedback/modifications are welcome!
 
