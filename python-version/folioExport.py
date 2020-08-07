@@ -1,135 +1,136 @@
 import pymarc
-from pymarc import MARCReader, MARCWriter, Field
+from pymarc import JSONReader, Field, JSONWriter, XMLWriter
 import psycopg2
 import psycopg2.extras
 import time
+import logging
 
 #WRITTEN W/PYTHON 3.7.3
 
 
 print("...starting export");
 
-# constructing file name
+# constructing file and log name
 timestr = time.strftime("%Y%m%d-%H%M%S")
-save_file = 'c:\\YOUR\\FILE\\PATH\\' + timestr + ".mrc"
-#save_file = '/home/mis306/' + timestr + ".mrc"
+logging.basicConfig(filename=timestr + "-export.log")
 
 #LOCAL DB
-DATABASE_HOST = "localhost"
-DATABASE_USERNAME = "USERNAME"
-DATABASE_PASSWORD = "PASSWORD"
-DATABASE_PORT = 1234
+DATABASE_HOST = "your.db.host"
+#DATABASE_HOST = "localhost"
+DATABASE_USERNAME = "your.db.username"
+DATABASE_PASSWORD = "your.db.password"
+DATABASE_PORT = 5432
 DATABASE_NAME = "folio"
+TENANT = "yourteantid"
 
-def lookupReferenceValues(refTables):
-	folio_db = psycopg2.connect(user = DATABASE_USERNAME, password = DATABASE_PASSWORD, 
-								host = DATABASE_HOST, port = DATABASE_PORT, database = DATABASE_NAME)
-	cursor = folio_db.cursor(cursor_factory=psycopg2.extras.DictCursor)
-	lookupTable = {}
-	for i in refTables:
-		print(i)
-		cursor.execute("select jsonb->>'id' as id, jsonb->>'name' as name from " + i)
-		rows = cursor.fetchall()
-		for row in rows:
-			lookupTable[row['id']] = row['name']
-
-
-	cursor.close()
-	folio_db.close()
-	return lookupTable
-
-#-->INITIALIZE REFERENCE VALUES (UUIDS TRANSLATE TO NAMES)
-tenant = "lu" #CHANGE TO INPUT VALUE?
-refTables = [tenant + "_mod_inventory_storage.material_type",
-			 tenant + "_mod_inventory_storage.classification_type",
-			 tenant + "_mod_inventory_storage.call_number_type",
-			 tenant + "_mod_inventory_storage.location"]
-refValuesLookup = lookupReferenceValues(refTables)
-
-
-writer = MARCWriter(open(save_file,'ab'))
-
-try:
-	folio_db = psycopg2.connect(user = DATABASE_USERNAME, password = DATABASE_PASSWORD, 
-								host = DATABASE_HOST, port = DATABASE_PORT, database = DATABASE_NAME)
-	cursor = folio_db.cursor(cursor_factory=psycopg2.extras.DictCursor)
-	#-->GET THE IDs FOR EACH NON-DISCOVERY-SUPPRESSED INSTANCE
-	cursor.execute("select id from " + tenant +"_mod_inventory_storage.instance where jsonb->>'discoverySuppress'='false' limit 100")
-	
-	rows = cursor.fetchall()
+count = 0
+folio_db = psycopg2.connect(
+        user=DATABASE_USERNAME,
+        password=DATABASE_PASSWORD,
+        host=DATABASE_HOST,
+        port=DATABASE_PORT,
+        database=DATABASE_NAME
+)
+cursor = folio_db.cursor(name='folio',cursor_factory=psycopg2.extras.DictCursor)
+#THIS COULD BE MODIFIED TO RETREIVE X NUMBER OF RECORDS PER FILE
+cursor.itersize=300000
+#from {}_mod_marc_storage.marc_record'''.format(TENANT)
+select_ids_sql = '''
+select
+id, 
+instance_id 
+from {}_mod_source_record_storage.records_lb where suppress_discovery = False'''.format(TENANT)
+print("executing query")
+cursor.execute(select_ids_sql)
+while True:
+	print("in the while true - fetching...")
+	rows = cursor.fetchmany(cursor.itersize)
+	print("fetch is done")
 	marcRecordCursor = folio_db.cursor(cursor_factory=psycopg2.extras.DictCursor)
-	for row in rows:
-		try: 
-			instanceId = row['id'];
-			#--> GET THE RAW RECORD ID
-			cursor.execute("select jsonb->>'rawRecordId' as rawrecordid from " + tenant + "_mod_source_record_storage.records " \
-				"where jsonb->'externalIdsHolder'->>'instanceId' = '" + instanceId + "'")
-			recordRow = cursor.fetchone()
-			rawRecordId = recordRow['rawrecordid']
-			#-->GET THE RAW RECORD
-			marcRecordCursor.execute("select id, jsonb->>'content' as marc from " + tenant + "_mod_source_record_storage.raw_records "\
-				"where id = '" + rawRecordId + "'")
-			marcRow = marcRecordCursor.fetchone()
-			marcAsString = marcRow['marc']
-			
-
-			for record in MARCReader(marcAsString.encode('iso8859-1')):
-				#ADD A 998 FOR EACH HOLDING
-				cursor.execute("select id, creation_date, callnumbertypeid, jsonb->>'permanentLocationId' as permanentlocationid, jsonb->>'callNumber' " \
-					"as callnumber from " + tenant + "_mod_inventory_storage.holdings_record where instanceid = '" + instanceId + "' and jsonb->>'discoverySuppress'='false'") 
-				holdingsRows = cursor.fetchall()
-				for holdings in holdingsRows:
-					print("in item holdings")
-					creationDate = str(holdings['creation_date'])
-					holdingsId = holdings['id']
-					callNumberType = refValuesLookup[holdings['callnumbertypeid']]
-					holdingLocation = refValuesLookup[holdings['permanentlocationid']]
-					callNumber = holdings['callnumber']
-					print (callNumber + " " + holdingLocation + " " + callNumberType)
-					record.add_field(
-					Field(
-					tag = '998',
-					indicators = [' ',' '],
-					subfields = [
-						'a',callNumber,
-						'd',callNumberType,
-						'u',creationDate,
-						'i',holdingLocation]))
-					#ADD A 097 FOR EACH ITEM
-					cursor.execute("select id, materialtypeid, jsonb->>'permanentLocationId' as permanentlocationid, "\
-						"jsonb->>'barcode' as barcode from " + tenant + "_mod_inventory_storage.item where holdingsrecordid = '" + holdingsId + "' and jsonb->>'discoverySuppress'='false'")
-					itemRows = cursor.fetchall()
-					for item in itemRows:
-						barcode = item['barcode']
-						itemLocation = refValuesLookup[item['permanentlocationid']]
-						itemType = refValuesLookup[item['materialtypeid']]
-						print (barcode + " " + itemLocation + " " + itemType)
+	if rows:
+		save_file = timestr + "." + str(count) + ".json"
+		writer = open(save_file,'wt')
+		print("created the file: " + save_file)
+		count += 1
+		for row in rows:
+			try: 
+				rowId = row['id'];
+				rowInstanceId = row['instance_id'];
+				select_record_sql = '''
+				select id, 
+				content as marc
+				from {}_mod_source_record_storage.marc_records_lb where 
+				id = '{}' limit 1'''.format(TENANT, rowId)
+				#print(select_record_sql)
+				marcRecordCursor.execute(select_record_sql)
+				marcRow = marcRecordCursor.fetchone()
+				marcJsonAsString = marcRow['marc']
+                                marcString = str(marcJsonAsString);
+				#print(marcJsonAsString);
+				for record in JSONReader(marcJsonAsString):
+					#write MARC JSON to output file
+					#ADD A 998 FOR EACH HOLDING RECORD
+					#THIS SCRIPT HAS SOME STRANGE EXPECTIONS
+					#TRYING TO WORK AROUND BAD RECORDS
+					#YOU CAN PROBABLY REMOVE THESE :)
+                                        if record['6xx'] is not None:
+                                            logging.error("BAD RECORD: 6xx" + str(row))
+                                            continue
+                                        if record['4xx'] is not None:
+                                            logging.error("BAD RECORD: 4xx" + str(row))
+                                            continue
+					select_holding_sql = '''
+					select id, creation_date, callnumbertypeid, 
+					jsonb->>'permanentLocationId' as permanentLocationId, 
+					jsonb->>'callNumber' as callNumber from 
+					{}_mod_inventory_storage.holdings_record 
+					where instanceid = '{}'  and jsonb->>'discoverySuppress'='false' '''.format(TENANT,rowInstanceId)
+					#print(select_holding_sql)
+					marcRecordCursor.execute(select_holding_sql)
+					holdingRows = marcRecordCursor.fetchmany()
+					for holding in holdingRows:
+						#print(holding['callnumber'])
+						rowHoldingsId = holding['id']
 						record.add_field(
-						Field(
-						tag = '097',
-						indicators = [' ',' '],
-						subfields = [
-							'i',barcode,
-							'k',itemLocation,
-							't',itemType]))
-				# write MARC to output file
-				writer.write(record)
-		except Exception as e:
-			print("ERROR PROCESSING ROW:" + str(row))
-			print(e)
-			print("INSTANCE ID: " + instanceId)
-			continue
-			
+							Field(tag = '998',
+								  indicators = [' ',' '],
+								  subfields = ['a',holding['callnumber'],
+											'l',holding['permanentlocationid']]))
+						#ADD AN 097 FOR EACH ITEM
+						select_item_sql = '''
+						select id, materialtypeid, jsonb->>'permanentLocationId' as 
+						permanentLocationId, jsonb->>'barcode' as barcode from 
+						{}_mod_inventory_storage.item where 
+						holdingsrecordid = '{}' and  jsonb->>'discoverySuppress'='false' '''.format(TENANT,rowHoldingsId)
+						#print(select_item_sql)
+						marcRecordCursor.execute(select_item_sql)
+						itemRows = marcRecordCursor.fetchmany()
+						for item in itemRows:
+							#print(item['barcode']);
+							record.add_field(
+								Field(tag = '097',
+									indicators = [' ',' '],
+									subfields = ['i',item['barcode'],
+								                     'k',item['permanentlocationid'],
+                                                                                     't',item['materialtypeid']]))
+                                        if (len(record.leader) < 24):
+                                            logging.error("BAD LEADER" + record.leader + " " + str(row))
+                                            record.leader = "{:<24}".format(record.leader)
+					writer.write(record.as_json())
+                                        writer.write('\n')
+			except Exception as e:
+					print("ERROR PROCESSING ROW:" + str(row))
+					print(e)
+					logging.error("UNABLE TO WRITE TO FILE: " + rowInstanceId)
+					logging.error(e)
+					continue
+		writer.close()
+	else:
+		print("in the else --> finishing")
+		break
 
-except (Exception, psycopg2.Error) as error :
-	print ("Error: ", error)
-finally:
-    #closing database connection.
-	if(folio_db):
-		cursor.close()
-		marcRecordCursor.close()
-		folio_db.close()
-		print("PostgreSQL connection closed")
-	print("...export complete");
-	print("MARC FILE CREATED: " + save_file)
-	writer.close()
+if (folio_db):
+	cursor.close()
+	marcRecordCursor.close()
+	folio_db.close()
+	print("complete")
