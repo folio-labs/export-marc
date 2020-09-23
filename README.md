@@ -4,7 +4,7 @@ This code is a work in progress.  It does produces a .json file that successfull
 
 Feedback/modifications are welcome!
 
-### export-new.py (uses database queries to)
+### export-new.py - uses database queries to:
 * In batches of 300K
 * Gets a list of all instance IDs that are not blocked from discovery and state of the MARC record is 'ACTUAL'
 * Using those IDs it retreives the MARC record
