@@ -15,21 +15,21 @@ timestr = time.strftime("%Y%m%d-%H%M%S")
 logging.basicConfig(filename=timestr + "-export.log")
 
 #LOCAL DB
-DATABASE_HOST = "your.db.host"
+DATABASE_HOST = "redacted"
 #DATABASE_HOST = "localhost"
-DATABASE_USERNAME = "your.db.username"
-DATABASE_PASSWORD = "your.db.password"
+DATABASE_USERNAME = "redacted"
+DATABASE_PASSWORD = "redacted"
 DATABASE_PORT = 5432
 DATABASE_NAME = "folio"
-TENANT = "yourteantid"
+TENANT = "lu"
 
 count = 0
 folio_db = psycopg2.connect(
-        user=DATABASE_USERNAME,
-        password=DATABASE_PASSWORD,
-        host=DATABASE_HOST,
-        port=DATABASE_PORT,
-        database=DATABASE_NAME
+	user=DATABASE_USERNAME,
+	password=DATABASE_PASSWORD,
+	host=DATABASE_HOST,
+	port=DATABASE_PORT,
+	database=DATABASE_NAME
 )
 cursor = folio_db.cursor(name='folio',cursor_factory=psycopg2.extras.DictCursor)
 #THIS COULD BE MODIFIED TO RETREIVE X NUMBER OF RECORDS PER FILE
@@ -39,7 +39,7 @@ select_ids_sql = '''
 select
 id, 
 instance_id 
-from {}_mod_source_record_storage.records_lb where suppress_discovery = False'''.format(TENANT)
+from {}_mod_source_record_storage.records_lb where state = {} and suppress_discovery = False'''.format(TENANT,"'ACTUAL'")
 print("executing query")
 cursor.execute(select_ids_sql)
 while True:
@@ -56,6 +56,9 @@ while True:
 			try: 
 				rowId = row['id'];
 				rowInstanceId = row['instance_id'];
+				if rowInstanceId == None:
+						logging.error("BAD RECORD: INSTANCE ID WAS NULL" + str(row))
+						continue
 				select_record_sql = '''
 				select id, 
 				content as marc
@@ -65,20 +68,17 @@ while True:
 				marcRecordCursor.execute(select_record_sql)
 				marcRow = marcRecordCursor.fetchone()
 				marcJsonAsString = marcRow['marc']
-                                marcString = str(marcJsonAsString);
+				marcString = marcJsonAsString.encode('utf-8').strip()
 				#print(marcJsonAsString);
 				for record in JSONReader(marcJsonAsString):
 					#write MARC JSON to output file
 					#ADD A 998 FOR EACH HOLDING RECORD
-					#THIS SCRIPT HAS SOME STRANGE EXPECTIONS
-					#TRYING TO WORK AROUND BAD RECORDS
-					#YOU CAN PROBABLY REMOVE THESE :)
-                                        if record['6xx'] is not None:
-                                            logging.error("BAD RECORD: 6xx" + str(row))
-                                            continue
-                                        if record['4xx'] is not None:
-                                            logging.error("BAD RECORD: 4xx" + str(row))
-                                            continue
+					if record['6xx'] is not None:
+						logging.error("BAD RECORD: 6xx" + str(row))
+						continue
+					if record['4xx'] is not None:
+						logging.error("BAD RECORD: 4xx" + str(row))
+						continue
 					select_holding_sql = '''
 					select id, creation_date, callnumbertypeid, 
 					jsonb->>'permanentLocationId' as permanentLocationId, 
@@ -99,7 +99,7 @@ while True:
 						#ADD AN 097 FOR EACH ITEM
 						select_item_sql = '''
 						select id, materialtypeid, jsonb->>'permanentLocationId' as 
-						permanentLocationId, jsonb->>'barcode' as barcode from 
+						permanentLocationId, jsonb->>'barcode' as barcode, jsonb->>'callnumber' as callnumber from 
 						{}_mod_inventory_storage.item where 
 						holdingsrecordid = '{}' and  jsonb->>'discoverySuppress'='false' '''.format(TENANT,rowHoldingsId)
 						#print(select_item_sql)
@@ -111,16 +111,19 @@ while True:
 								Field(tag = '097',
 									indicators = [' ',' '],
 									subfields = ['i',item['barcode'],
-								                     'k',item['permanentlocationid'],
-                                                                                     't',item['materialtypeid']]))
-                                        if (len(record.leader) < 24):
-                                            logging.error("BAD LEADER" + record.leader + " " + str(row))
-                                            record.leader = "{:<24}".format(record.leader)
+									'k',item['permanentlocationid'],
+									't',item['materialtypeid'],
+									'a',item['callnumber']]))
+							if (len(record.leader) < 24):
+								logging.error("BAD LEADER" + record.leader + " " + str(row))
+								record.leader = "{:<24}".format(record.leader)
 					writer.write(record.as_json())
-                                        writer.write('\n')
+					writer.write('\n')
 			except Exception as e:
 					print("ERROR PROCESSING ROW:" + str(row))
 					print(e)
+					if rowInstanceId == None:
+						rowInstanceId = "None" #FOR LOGGING
 					logging.error("UNABLE TO WRITE TO FILE: " + rowInstanceId)
 					logging.error(e)
 					continue
