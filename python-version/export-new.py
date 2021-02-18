@@ -4,6 +4,7 @@ import psycopg2
 import psycopg2.extras
 import time
 import logging
+import json
 
 #WRITTEN W/PYTHON 3.7.3
 
@@ -16,12 +17,11 @@ logging.basicConfig(filename=timestr + "-export.log")
 
 #LOCAL DB
 DATABASE_HOST = "redacted"
-#DATABASE_HOST = "localhost"
 DATABASE_USERNAME = "redacted"
 DATABASE_PASSWORD = "redacted"
 DATABASE_PORT = 5432
-DATABASE_NAME = "folio"
-TENANT = "lu"
+DATABASE_NAME = "redacted"
+TENANT = "redacted"
 
 count = 0
 folio_db = psycopg2.connect(
@@ -67,7 +67,7 @@ while True:
 				#print(select_record_sql)
 				marcRecordCursor.execute(select_record_sql)
 				marcRow = marcRecordCursor.fetchone()
-				marcJsonAsString = marcRow['marc']
+				marcJsonAsString = json.dumps(marcRow['marc'])
 				marcString = marcJsonAsString.encode('utf-8').strip()
 				#print(marcJsonAsString);
 				for record in JSONReader(marcJsonAsString):
