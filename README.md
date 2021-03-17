@@ -14,6 +14,4 @@ Feedback/modifications are welcome!
 
 
 Notes:
-For the VuFind incremental export we were using a script that used API calls to build the export file.  The most important API call being "/source-storage/source-records?updatedAfter=".
-This works when 'thousands' of records were updated in one day...it does not work when there have been 150k records updated.  The module runs out of memory and returns a 500 error.  At Lehigh we are moving towards implementing the OAI-PMH module for our incremental updates.
-
+For the daily VuFind incremental update we were using the FOLIO OAI/PMH (marc21) module and the scripts built into VuFind. 
