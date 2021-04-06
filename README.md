@@ -1,4 +1,4 @@
-## MARC Export Scripts for FOLIO - WORK IN PROGRESS
+## MARC Export Script for FOLIO 
 
 This code is a work in progress.  It does produces a .json file that successfully imports into VuFind.  
 
