@@ -31,6 +31,37 @@ folio_db = psycopg2.connect(
 	port=DATABASE_PORT,
 	database=DATABASE_NAME
 )
+
+#init a list of material types
+materialTypeLookup = {}
+matCursor = folio_db.cursor(cursor_factory=psycopg2.extras.DictCursor)
+select_all_mat = '''
+select id, jsonb->>'name' as name from {}_mod_inventory_storage.material_type'''.format(TENANT)
+matCursor.execute(select_all_mat)
+materialTypes = matCursor.fetchall()
+for m in materialTypes:
+    materialTypeLookup[m['id']] = m['name']
+
+#init a list of locations 
+locLookup = {}
+locCursor = folio_db.cursor(cursor_factory=psycopg2.extras.DictCursor)
+select_all_loc = '''
+select id, jsonb->>'name' as name from {}_mod_inventory_storage.location'''.format(TENANT)
+locCursor.execute(select_all_loc)
+locations = locCursor.fetchall()
+for l in locations:
+    locLookup[l['id']] = l['name']
+
+#init a list of call number types
+callNoTypeLookup = {}
+callNoTypeCursor = folio_db.cursor(cursor_factory=psycopg2.extras.DictCursor)
+select_all_call_no_types = '''
+select id, jsonb->>'name' as name from {}_mod_inventory_storage.call_number_type'''.format(TENANT)
+callNoTypeCursor.execute(select_all_call_no_types)
+callNoTypes = callNoTypeCursor.fetchall()
+for c in callNoTypes:
+    callNoTypeLookup[c['id']] = c['name']
+
 cursor = folio_db.cursor(name='folio',cursor_factory=psycopg2.extras.DictCursor)
 #THIS COULD BE MODIFIED TO RETREIVE X NUMBER OF RECORDS PER FILE
 cursor.itersize=300000
@@ -39,7 +70,7 @@ select_ids_sql = '''
 select
 id, 
 instance_id 
-from {}_mod_source_record_storage.records_lb where state = {} and suppress_discovery = False'''.format(TENANT,"'ACTUAL'")
+from {}_mod_source_record_storage.records_lb where state = {} and (suppress_discovery = False  or suppress_discovery is null)'''.format(TENANT,"'ACTUAL'")
 print("executing query")
 cursor.execute(select_ids_sql)
 while True:
@@ -81,39 +112,53 @@ while True:
 						continue
 					select_holding_sql = '''
 					select id, creation_date, callnumbertypeid, 
-					jsonb->>'permanentLocationId' as permanentLocationId, 
+					jsonb->>'permanentLocationId' as permanentlocationid, 
+					jsonb->'holdingsStatements' as holdingstatements,
 					jsonb->>'callNumber' as callNumber from 
 					{}_mod_inventory_storage.holdings_record 
-					where instanceid = '{}'  and jsonb->>'discoverySuppress'='false' '''.format(TENANT,rowInstanceId)
+					where instanceid = '{}'  and (jsonb->>'discoverySuppress'='false' or jsonb->>'discoverySuppress' is null)'''.format(TENANT,rowInstanceId)
 					#print(select_holding_sql)
 					marcRecordCursor.execute(select_holding_sql)
-					holdingRows = marcRecordCursor.fetchmany()
+					holdingRows = marcRecordCursor.fetchall()
 					for holding in holdingRows:
 						#print(holding['callnumber'])
+						holdingsStatements = holding['holdingstatements']
 						rowHoldingsId = holding['id']
-						record.add_field(
-							Field(tag = '998',
+						newField = Field(tag = '998',
 								  indicators = [' ',' '],
-								  subfields = ['a',holding['callnumber'],
-											'l',holding['permanentlocationid']]))
-						#ADD AN 097 FOR EACH ITEM
+								  subfields = ['a',holding.get('callnumber',''),
+											'l',locLookup.get(holding.get('permanentlocationid',''),'')])
+						for statement in holdingsStatements:
+							if statement is not None:
+								newField.add_subfield('s',statement.get('statement','').replace('Extent of ownership:',''));
+						record.add_field(newField)
+						#ADD AN 952 FOR EACH ITEM
 						select_item_sql = '''
-						select id, materialtypeid, jsonb->>'permanentLocationId' as 
-						permanentLocationId, jsonb->>'barcode' as barcode, jsonb->>'callnumber' as callnumber from 
-						{}_mod_inventory_storage.item where 
-						holdingsrecordid = '{}' and  jsonb->>'discoverySuppress'='false' '''.format(TENANT,rowHoldingsId)
+						select id, materialtypeid, 
+						jsonb->>'effectiveLocationId' as effectivelocationid, 
+						jsonb->>'barcode' as barcode, 
+						jsonb->'effectiveCallNumberComponents'->>'prefix' as prefix,
+						jsonb->'effectiveCallNumberComponents'->>'typeId' as callnotype,
+						jsonb->'effectiveCallNumberComponents'->>'callNumber' as callnumber
+						from {}_mod_inventory_storage.item where 
+						holdingsrecordid = '{}' and  (jsonb->>'discoverySuppress'='false' or jsonb->>'discoverySuppress' is null)'''.format(TENANT,rowHoldingsId)
 						#print(select_item_sql)
 						marcRecordCursor.execute(select_item_sql)
-						itemRows = marcRecordCursor.fetchmany()
+						itemRows = marcRecordCursor.fetchall()
 						for item in itemRows:
-							#print(item['barcode']);
+							callNoToUse = item.get('callnumber','call no aint in item')
+							#print(callNoToUse)
+							prefix = item.get('prefix',None)
+							if (prefix is not None):
+								callNoToUse = prefix + " " + callNoToUse
 							record.add_field(
-								Field(tag = '097',
+								Field(tag = '952',
 									indicators = [' ',' '],
-									subfields = ['i',item['barcode'],
-									'k',item['permanentlocationid'],
-									't',item['materialtypeid'],
-									'a',item['callnumber']]))
+									subfields = ['m',item.get('barcode',''),
+									'j',callNoTypeLookup.get(item.get('callnotype',''),''),
+									'd',locLookup.get(item.get('effectivelocationid'),''),
+									'i',materialTypeLookup.get(item.get('materialtypeid'),''),
+									'e',callNoToUse]))
 							if (len(record.leader) < 24):
 								logging.error("BAD LEADER" + record.leader + " " + str(row))
 								record.leader = "{:<24}".format(record.leader)
