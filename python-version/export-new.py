@@ -146,7 +146,7 @@ while True:
 						marcRecordCursor.execute(select_item_sql)
 						itemRows = marcRecordCursor.fetchall()
 						for item in itemRows:
-							callNoToUse = item.get('callnumber','call no aint in item')
+							callNoToUse = item.get('callnumber','na')
 							#print(callNoToUse)
 							prefix = item.get('prefix',None)
 							if (prefix is not None):
